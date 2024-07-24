@@ -108,7 +108,6 @@ mod app {
 
         // Spawn heartbeat task
         heartbeat::spawn().unwrap();
-        led.set_low().unwrap();
 
         // Return resources and timer
         (Shared {}, Local { led })
@@ -127,7 +126,7 @@ mod app {
         loop {
             // Flicker the built-in LED
             ctx.local.led.toggle().unwrap();
-            info!("balls");
+            // info!("balls");
 
             // Congrats, you can use your i2c and have access to it here,
             // now to do something with it!

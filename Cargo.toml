@@ -9,11 +9,11 @@ edition = "2021"
 [workspace]
 
 [dependencies.rtic]
-version = "2.0.0"
+version = "2.1"
 features = ["thumbv6-backend"]
 
 [dependencies.rtic-monotonics]
-version = "2.0.0"
+version = "2.0"
 features = ["rp2040"]
 
 [dependencies]
