@@ -552,7 +552,6 @@ name = "rp2040_local_i2c_init"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
- "cortex-m-rt",
  "defmt",
  "defmt-rtt",
  "embedded-hal 1.0.0",

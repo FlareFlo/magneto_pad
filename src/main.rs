@@ -24,7 +24,8 @@ mod app {
     use rp_pico::XOSC_CRYSTAL_FREQ;
 
     use core::mem::MaybeUninit;
-    use defmt::info;
+    use defmt::*;
+    use defmt::panic;
     use fugit::RateExtU32;
     use panic_probe as _;
     use defmt_rtt as _;
@@ -125,7 +126,7 @@ mod app {
         // equal  priority task will be able to run.
         loop {
             // Flicker the built-in LED
-            _ = ctx.local.led.toggle();
+            ctx.local.led.toggle().unwrap();
             info!("balls");
 
             // Congrats, you can use your i2c and have access to it here,
