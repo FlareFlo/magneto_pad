@@ -1,0 +1,16 @@
+[default.probe]
+protocol = "Swd"
+speed = 20000
+
+[default.general]
+chip = "RP2040"
+log_level = "WARN"
+# RP2040 does not support connect_under_reset
+connect_under_reset = false
+
+[default.flashing]
+enabled = true
+
+[default.reset]
+enabled = true
+halt_afterwards = false
