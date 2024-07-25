@@ -28,9 +28,9 @@ async fn main(_spawner: Spawner) {
 
     // Create embassy-usb Config
     let mut config = Config::new(0xc0de, 0xcafe);
-    config.manufacturer = Some("Embassy");
-    config.product = Some("HID keyboard example");
-    config.serial_number = Some("12345678");
+    config.manufacturer = Some("magneto_pad_manufacturer");
+    config.product = Some("magneto_pad_product");
+    config.serial_number = Some("magneto_pad_serial_nr");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
 
@@ -73,7 +73,7 @@ async fn main(_spawner: Spawner) {
     let usb_fut = usb.run();
 
     // Set up the signal pin that will be used to trigger the keyboard.
-    let mut signal_pin = Input::new(p.PIN_16, Pull::None);
+    let mut signal_pin = Input::new(p.PIN_24, Pull::Up);
 
     // Enable the schmitt trigger to slightly debounce.
     signal_pin.set_schmitt(true);
@@ -88,7 +88,7 @@ async fn main(_spawner: Spawner) {
             info!("HIGH DETECTED");
             // Create a report with the A key pressed. (no shift modifier)
             let report = KeyboardReport {
-                keycodes: [4, 0, 0, 0, 0, 0],
+                keycodes: [0, 0, 0, 0, 0, 0],
                 leds: 0,
                 modifier: 0,
                 reserved: 0,
@@ -101,7 +101,7 @@ async fn main(_spawner: Spawner) {
             signal_pin.wait_for_low().await;
             info!("LOW DETECTED");
             let report = KeyboardReport {
-                keycodes: [0, 0, 0, 0, 0, 0],
+                keycodes: [4, 0, 0, 0, 0, 0],
                 leds: 0,
                 modifier: 0,
                 reserved: 0,
