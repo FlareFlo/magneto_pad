@@ -9,11 +9,13 @@ use embassy_futures::join::join;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::USB;
-use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};
+use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
+use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
+use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
@@ -24,7 +26,7 @@ bind_interrupts!(struct Irqs {
 async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
     // Create the driver, from the HAL.
-    let driver = Driver::new(p.USB, Irqs);
+    let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
     let mut config = Config::new(0xc0de, 0xcafe);
@@ -33,6 +35,10 @@ async fn main(_spawner: Spawner) {
     config.serial_number = Some("magneto_pad_serial_nr");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
+    config.composite_with_iads = true;
+    config.device_class = 0xEF;
+    config.device_protocol = 0x01;
+    config.device_sub_class = 0x02;
 
     // Create embassy-usb DeviceBuilder using the driver and config.
     // It needs some buffers for building the descriptors.
@@ -45,6 +51,14 @@ async fn main(_spawner: Spawner) {
     let mut device_handler = MyDeviceHandler::new();
 
     let mut state = State::new();
+    let mut web_state = WebUsbState::new();
+
+    let web_usb_config = WebUsbConfig {
+        max_packet_size: 64,
+        landing_url: None,
+        vendor_code: 1,
+    };
+
 
     let mut builder = Builder::new(
         driver,
@@ -64,7 +78,11 @@ async fn main(_spawner: Spawner) {
         poll_ms: 60,
         max_packet_size: 64,
     };
+
     let hid = HidReaderWriter::<_, 1, 8>::new(&mut builder, &mut state, config);
+    WebUsb::configure(&mut builder, &mut web_state, &web_usb_config);
+
+    let mut endpoints = WebEndpoints::new(&mut builder, &web_usb_config);
 
     // Build the builder.
     let mut usb = builder.build();
@@ -117,9 +135,17 @@ async fn main(_spawner: Spawner) {
         reader.run(false, &mut request_handler).await;
     };
 
+    let webusb_fut = async {
+        loop {
+            endpoints.wait_connected().await;
+            info!("Connected");
+            endpoints.echo().await;
+        }
+    };
+
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
-    join(usb_fut, join(in_fut, out_fut)).await;
+    join(join(usb_fut, webusb_fut), join(in_fut, out_fut)).await;
 }
 
 struct MyRequestHandler {}
@@ -183,6 +209,40 @@ impl Handler for MyDeviceHandler {
             info!("Device configured, it may now draw up to the configured current limit from Vbus.")
         } else {
             info!("Device is no longer configured, the Vbus current limit is 100mA.");
+        }
+    }
+}
+
+struct WebEndpoints<'d, D: Driver<'d>> {
+    write_ep: D::EndpointIn,
+    read_ep: D::EndpointOut,
+}
+
+impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
+    fn new(builder: &mut Builder<'d, D>, config: &'d WebUsbConfig<'d>) -> Self {
+        let mut func = builder.function(0xff, 0x00, 0x00);
+        let mut iface = func.interface();
+        let mut alt = iface.alt_setting(0xff, 0x00, 0x00, None);
+
+        let write_ep = alt.endpoint_bulk_in(config.max_packet_size);
+        let read_ep = alt.endpoint_bulk_out(config.max_packet_size);
+
+        WebEndpoints { write_ep, read_ep }
+    }
+
+    // Wait until the device's endpoints are enabled.
+    async fn wait_connected(&mut self) {
+        self.read_ep.wait_enabled().await
+    }
+
+    // Echo data back to the host.
+    async fn echo(&mut self) {
+        let mut buf = [0; 64];
+        loop {
+            let n = self.read_ep.read(&mut buf).await.unwrap();
+            let data = &buf[..n];
+            info!("Data read: {:x}", data);
+            self.write_ep.write(data).await.unwrap();
         }
     }
 }
