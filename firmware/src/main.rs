@@ -17,6 +17,8 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
+use shared::{PRODUCT_ID, VENDOR_ID};
+use shared::message::{Command, Message};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -29,7 +31,7 @@ async fn main(_spawner: Spawner) {
     let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
-    let mut config = Config::new(VENDOR_ID, 0xcafe);
+    let mut config = Config::new(VENDOR_ID, PRODUCT_ID);
     config.manufacturer = Some("magneto_pad_manufacturer");
     config.product = Some("magneto_pad_product");
     config.serial_number = Some("magneto_pad_serial_nr");
@@ -242,7 +244,14 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
             let n = self.read_ep.read(&mut buf).await.unwrap();
             let data = &buf[..n];
             info!("Data read: {:x}", data);
-            self.write_ep.write(data).await.unwrap();
+            
+            let msg = Message::deserialize(data);
+            match msg.command().unwrap() {
+                Command::ToggleLed => {
+                    info!("GOT TOGGLE");
+                }
+                _ => {}
+            }
         }
     }
 }
