@@ -29,7 +29,7 @@ async fn main(_spawner: Spawner) {
     let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
-    let mut config = Config::new(0xc0de, 0xcafe);
+    let mut config = Config::new(VENDOR_ID, 0xcafe);
     config.manufacturer = Some("magneto_pad_manufacturer");
     config.product = Some("magneto_pad_product");
     config.serial_number = Some("magneto_pad_serial_nr");
