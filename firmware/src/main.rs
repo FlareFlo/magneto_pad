@@ -7,8 +7,8 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Pull};
-use embassy_rp::peripherals::USB;
+use embassy_rp::gpio::{Input, Level, Output, Pull};
+use embassy_rp::peripherals::{PIN_25, USB};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};
@@ -18,7 +18,7 @@ use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 use shared::{PRODUCT_ID, VENDOR_ID};
-use shared::message::{Command, Message};
+use shared::message::{ Message};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -138,10 +138,11 @@ async fn main(_spawner: Spawner) {
     };
 
     let webusb_fut = async {
+        let mut debug_led = Output::new(p.PIN_25, Level::Low);
         loop {
             endpoints.wait_connected().await;
             info!("Connected");
-            endpoints.echo().await;
+            endpoints.echo(&mut debug_led).await;
         }
     };
 
@@ -238,7 +239,7 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
     }
 
     // Echo data back to the host.
-    async fn echo(&mut self) {
+    async fn echo(&mut self, debug_led: &mut Output<'_, PIN_25>) {
         let mut buf = [0; 64];
         loop {
             let n = self.read_ep.read(&mut buf).await.unwrap();
@@ -249,6 +250,7 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
             match msg {
                 Message::ToggleDebugLed => {
                     info!("GOT TOGGLE");
+                    debug_led.toggle();
                 }
                 _ => {}
             }

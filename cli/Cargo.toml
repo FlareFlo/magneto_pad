@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 rusb = "0.9.4"
 shared = { path = "../shared"}
+sudo = "0.6.0"
