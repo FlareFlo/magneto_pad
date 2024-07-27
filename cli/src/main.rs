@@ -11,7 +11,7 @@ fn main() {
 
     let kb = device.open().unwrap();
     kb.claim_interface(2).unwrap();
-    kb.write_bulk(2, Message::toggle_led().serialize().as_slice(), Duration::from_secs(1)).unwrap();
+    kb.write_bulk(2, Message::ToggleDebugLed.serialize().as_slice(), Duration::from_secs(1)).unwrap();
 }
 
 fn get_keyboard() -> Option<Device<GlobalContext>> {

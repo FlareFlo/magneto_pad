@@ -246,8 +246,8 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
             info!("Data read: {:x}", data);
             
             let msg = Message::deserialize(data);
-            match msg.command().unwrap() {
-                Command::ToggleLed => {
+            match msg {
+                Message::ToggleDebugLed => {
                     info!("GOT TOGGLE");
                 }
                 _ => {}

@@ -15,52 +15,12 @@ pub const MESSAGE_BUF_SIZE: usize = 64;
 static NEXT_MSG_ID: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, PartialEq, Encode, Decode)]
-#[non_exhaustive]
 pub enum Message {
-	Command {
-		cmd: Command,
-		id: u32,
-	},
-	Response {
-		res: Response,
-		to: u32,
-	}
-}
-
-#[derive(Debug, Encode, Decode, PartialEq)]
-pub enum Command {
-	Heartbeat(u32),
-	ToggleLed,
-}
-
-#[derive(Debug, Encode, Decode, PartialEq)]
-pub enum Response {
-	Heartbeat(u32),
+	Heartbeat,
+	ToggleDebugLed,
 }
 
 impl Message {
-	pub fn request_heartbeat(h: u32) -> Self {
-		Self::make_command(Command::Heartbeat(h))
-	}
-
-	pub fn toggle_led() -> Self {
-		Self::make_command(Command::ToggleLed)
-	}
-
-	pub fn command(self) -> Option<Command> {
-		match self {
-			Message::Command { cmd, .. } => {Some(cmd)}
-			Message::Response { .. } => {None}
-		}
-	}
-
-	fn make_command(cmd: Command) -> Self {
-		Self::Command {
-			cmd,
-			id: 0,
-		}
-	}
-
 	pub fn serialize(&self) -> FixedBytes<MESSAGE_BUF_SIZE> {
 		let mut buf = FixedBytes::new();
 		ENCODING.encode(&mut buf, self).unwrap();
