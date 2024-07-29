@@ -1,0 +1,18 @@
+<head></head>
+<body>
+<button class="button">Yeah</button>
+<script>
+    const button = document.querySelector('button');
+    button.addEventListener('click', async () => {
+        const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0xc0de }] });
+        await device.open();
+        await device.claimInterface(2);
+        await device.transferOut(2, new Uint8Array([1,2,3]));
+        await device.transferIn(2, 64).then(data => console.log(data));
+    });
+</script>
+</body>
+
+<!--sudo caddy file-server --browse --domain localhost -->
+
+<!--Check permission for /dev/bus/usb/busid/id for writing = chmod o+w-->
