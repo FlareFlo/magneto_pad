@@ -5,22 +5,31 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
+use embassy_futures::join::{join, join3};
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Pull};
-use embassy_rp::peripherals::USB;
+use embassy_rp::gpio::{Input,Pull};
+use embassy_rp::peripherals::{USB};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};
-use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
+use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, WebUsb};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::pubsub::{Publisher, PubSubChannel, Subscriber, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
+use log::error;
+use shared::{PRODUCT_ID, VENDOR_ID};
+use shared::message::{ Message};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
+
+type UsbChannel = PubSubChannel<NoopRawMutex, (bool, Message), 10, 2, 2>;
+type UsbSubscriber<'a> = Subscriber<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
+type UsbPublisher<'a> = Publisher<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -29,7 +38,7 @@ async fn main(_spawner: Spawner) {
     let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
-    let mut config = Config::new(0xc0de, 0xcafe);
+    let mut config = Config::new(VENDOR_ID, PRODUCT_ID);
     config.manufacturer = Some("magneto_pad_manufacturer");
     config.product = Some("magneto_pad_product");
     config.serial_number = Some("magneto_pad_serial_nr");
@@ -135,17 +144,39 @@ async fn main(_spawner: Spawner) {
         reader.run(false, &mut request_handler).await;
     };
 
-    let webusb_fut = async {
+    let channel: UsbChannel = PubSubChannel::new();
+
+    let webusb = async {
         loop {
             endpoints.wait_connected().await;
-            info!("Connected");
-            endpoints.echo().await;
+            info!("Connected webusb");
+            endpoints.run_webusb(channel.publisher().unwrap(), channel.subscriber().unwrap()).await;
+        }
+    };
+
+    let ping_pong  = async {
+        let mut sub = channel.subscriber().unwrap();
+        let publisher = channel.publisher().unwrap();
+        loop {
+            match sub.next_message().await {
+                WaitResult::Lagged(x) => {error!("Channel lagged for {x} messages")}
+                WaitResult::Message((should_write, msg)) => {
+                    if !should_write {
+                        match msg {
+                            Message::Ping => {
+                                publisher.publish((true, Message::Pong)).await;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
     };
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
-    join(join(usb_fut, webusb_fut), join(in_fut, out_fut)).await;
+    join3(join(usb_fut, webusb), join(in_fut, out_fut), ping_pong).await;
 }
 
 struct MyRequestHandler {}
@@ -226,6 +257,7 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
 
         let write_ep = alt.endpoint_bulk_in(config.max_packet_size);
         let read_ep = alt.endpoint_bulk_out(config.max_packet_size);
+        warn!("{} {}",read_ep.info().addr, write_ep.info().addr);
 
         WebEndpoints { write_ep, read_ep }
     }
@@ -235,14 +267,30 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
         self.read_ep.wait_enabled().await
     }
 
-    // Echo data back to the host.
-    async fn echo(&mut self) {
-        let mut buf = [0; 64];
-        loop {
-            let n = self.read_ep.read(&mut buf).await.unwrap();
-            let data = &buf[..n];
-            info!("Data read: {:x}", data);
-            self.write_ep.write(data).await.unwrap();
-        }
+    async fn run_webusb(&mut self, publisher: UsbPublisher<'_>, mut sub: UsbSubscriber<'_>) {
+        let reader = async {
+            let mut buf = [0; 64];
+            loop {
+                let n = self.read_ep.read(&mut buf).await.unwrap();
+                let data = &buf[..n];
+
+                let msg = Message::deserialize(data);
+                publisher.publish((false, msg)).await;
+            }
+        };
+       let writer = async {
+           loop {
+               match sub.next_message().await {
+                   WaitResult::Lagged(x) => {error!("Channel lagged for {x} messages")}
+                   WaitResult::Message((should_write, msg)) => {
+                       if should_write {
+                           let ser = msg.serialize();
+                           self.write_ep.write(ser.as_slice()).await.unwrap();
+                       }
+                   }
+               }
+           }
+       };
+        join(reader, writer).await;
     }
 }
