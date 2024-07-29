@@ -1,11 +1,9 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::*;
-use embassy_executor::Spawner;
 use embassy_futures::join::{join, join3};
-use embassy_rp::{bind_interrupts, Peripherals};
-use embassy_rp::gpio::{Input,Pull};
-use embassy_rp::peripherals::{PIN_24, USB};
+use embassy_rp::bind_interrupts;
+use embassy_rp::peripherals::USB;
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};

@@ -1,4 +1,4 @@
-use defmt::{info, warn};
+use defmt::info;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::PIN_24;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
