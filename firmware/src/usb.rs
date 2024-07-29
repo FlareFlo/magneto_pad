@@ -13,6 +13,7 @@ use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, 
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Receiver;
 use embassy_sync::pubsub::{Publisher, PubSubChannel, Subscriber, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
@@ -27,7 +28,7 @@ type UsbChannel = PubSubChannel<NoopRawMutex, (bool, Message), 10, 2, 2>;
 type UsbSubscriber<'a> = Subscriber<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
 type UsbPublisher<'a> = Publisher<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
 
-pub async fn setup_usb(usb: USB, pin: PIN_24) {
+pub async fn setup_usb(usb: USB, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>) {
 	// Create the driver, from the HAL.
 	let driver = UsbDriver::new(usb, Irqs);
 
@@ -95,42 +96,10 @@ pub async fn setup_usb(usb: USB, pin: PIN_24) {
 
 	let (reader, mut writer) = hid.split();
 
-	// Set up the signal pin that will be used to trigger the keyboard.
-	let mut signal_pin = Input::new(pin, Pull::Up);
-
-	// Enable the schmitt trigger to slightly debounce.
-	signal_pin.set_schmitt(true);
-
-	// Do stuff with the class!
-	let in_fut = async {
+	let hid_writer_fut = async {
 		loop {
-			info!("Waiting for HIGH on pin 16");
-			signal_pin.wait_for_high().await;
-			info!("HIGH DETECTED");
-			// Create a report with the A key pressed. (no shift modifier)
-			let report = KeyboardReport {
-				keycodes: [0, 0, 0, 0, 0, 0],
-				leds: 0,
-				modifier: 0,
-				reserved: 0,
-			};
-			// Send the report.
-			match writer.write_serialize(&report).await {
-				Ok(()) => {}
-				Err(e) => warn!("Failed to send report: {:?}", e),
-			};
-			signal_pin.wait_for_low().await;
-			info!("LOW DETECTED");
-			let report = KeyboardReport {
-				keycodes: [4, 0, 0, 0, 0, 0],
-				leds: 0,
-				modifier: 0,
-				reserved: 0,
-			};
-			match writer.write_serialize(&report).await {
-				Ok(()) => {}
-				Err(e) => warn!("Failed to send report: {:?}", e),
-			};
+			let msg = receiver.receive().await;
+			writer.write_serialize(&msg).await.unwrap();
 		}
 	};
 
@@ -168,7 +137,7 @@ pub async fn setup_usb(usb: USB, pin: PIN_24) {
 		}
 	};
 
-	join3(join(usb_fut, webusb), join(in_fut, out_fut), ping_pong).await;
+	join3(join(usb_fut, webusb), join(hid_writer_fut, out_fut), ping_pong).await;
 }
 
 struct MyRequestHandler {}

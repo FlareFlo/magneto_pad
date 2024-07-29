@@ -2,6 +2,7 @@
 #![no_main]
 
 mod usb;
+mod hid;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -18,16 +19,22 @@ use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, 
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::{Publisher, PubSubChannel, Subscriber, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 use shared::{PRODUCT_ID, VENDOR_ID};
 use shared::message::{ Message};
+use crate::hid::run_hid;
 use crate::usb::setup_usb;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    setup_usb(p.USB, p.PIN_24).await;
+    let channel: Channel<NoopRawMutex, KeyboardReport, 10> = Channel::new();
+    let hid = run_hid(p.PIN_24, channel.sender());
+    let usb = setup_usb(p.USB, channel.receiver());
+
+    join(hid, usb).await;
 }
