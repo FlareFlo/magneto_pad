@@ -640,7 +640,6 @@ dependencies = [
  "embassy-rp",
  "embassy-sync 0.6.0",
  "embassy-usb",
- "log",
  "panic-probe",
  "shared",
  "usbd-hid",
