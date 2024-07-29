@@ -10,6 +10,7 @@ embassy-executor = { version = "0.5.0", features = ["task-arena-size-98304", "ar
 embassy-rp = { version = "0.1.0",  features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl"] }
 embassy-usb = { version = "0.2.0", features = ["defmt"] }
 embassy-futures = { version = "0.1.0"}
+embassy-sync = "0.6.0"
 defmt = "0.3"
 defmt-rtt = "0.4"
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
@@ -18,3 +19,4 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 usbd-hid = "0.7"
 
 shared = { path = "../shared"}
+log = "0.4.22"

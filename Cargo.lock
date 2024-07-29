@@ -471,6 +471,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-sync"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3e0c49ff02ebe324faf3a8653ba91582e2d0a7fdef5bc88f449d5aa1bfcc05c"
+dependencies = [
+ "cfg-if",
+ "critical-section",
+ "embedded-io-async",
+ "futures-util",
+ "heapless 0.8.0",
+]
+
+[[package]]
 name = "embassy-time"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -625,7 +638,9 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-rp",
+ "embassy-sync 0.6.0",
  "embassy-usb",
+ "log",
  "panic-probe",
  "shared",
  "usbd-hid",

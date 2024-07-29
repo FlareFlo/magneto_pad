@@ -20,7 +20,10 @@ fn main() {
 
     let kb = device.open().unwrap();
     kb.claim_interface(2).unwrap();
-    kb.write_bulk(2, Message::ToggleDebugLed.serialize().as_slice(), Duration::from_secs(1)).unwrap();
+    kb.write_bulk(2, Message::Ping.serialize().as_slice(), Duration::from_secs(1)).unwrap();
+    let mut buf = [0; 128];
+    let len = kb.read_bulk(130, &mut buf, Duration::from_secs(0)).unwrap();
+    dbg!(Message::deserialize(&buf[..len]));
 }
 
 fn get_keyboard() -> Option<Device<GlobalContext>> {

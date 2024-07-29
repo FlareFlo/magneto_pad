@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32};
 use musli::{Decode, Encode, FixedBytes, Options, options};
 use musli::options::{ByteOrder, Integer};
 use musli::wire::Encoding;
@@ -14,9 +14,10 @@ pub const MESSAGE_BUF_SIZE: usize = 64;
 
 static NEXT_MSG_ID: AtomicU32 = AtomicU32::new(0);
 
-#[derive(Debug, PartialEq, Encode, Decode)]
+#[derive(Debug, PartialEq, Encode, Decode, Clone)]
 pub enum Message {
-	Heartbeat,
+	Ping,
+	Pong,
 	ToggleDebugLed,
 }
 
