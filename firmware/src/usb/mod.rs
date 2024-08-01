@@ -1,3 +1,8 @@
+mod config;
+mod builder;
+mod web_usb;
+mod device_handler;
+
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::*;
@@ -17,72 +22,35 @@ use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 use shared::{PRODUCT_ID, VENDOR_ID};
 use shared::message::{ Message};
+use crate::make_static;
+use crate::usb::builder::get_builder;
+use crate::usb::config::{get_device_configs, get_usb_config};
+use crate::usb::device_handler::DeviceHandler;
+use crate::usb::web_usb::{UsbChannel, UsbPublisher, UsbSubscriber};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
-type UsbChannel = PubSubChannel<NoopRawMutex, (bool, Message), 10, 2, 2>;
-type UsbSubscriber<'a> = Subscriber<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
-type UsbPublisher<'a> = Publisher<'a, NoopRawMutex, (bool, Message), 10, 2, 2>;
-
-pub async fn setup_usb(usb: USB, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>) {
-	// Create the driver, from the HAL.
-	let driver = UsbDriver::new(usb, Irqs);
-
-	// Create embassy-usb Config
-	let mut config = Config::new(VENDOR_ID, PRODUCT_ID);
-	config.manufacturer = Some("magneto_pad_manufacturer");
-	config.product = Some("magneto_pad_product");
-	config.serial_number = Some("magneto_pad_serial_nr");
-	config.max_power = 100;
-	config.max_packet_size_0 = 64;
-	config.composite_with_iads = true;
-	config.device_class = 0xEF;
-	config.device_protocol = 0x01;
-	config.device_sub_class = 0x02;
-
-	// Create embassy-usb DeviceBuilder using the driver and config.
-	// It needs some buffers for building the descriptors.
-	let mut config_descriptor = [0; 256];
-	let mut bos_descriptor = [0; 256];
-	// You can also add a Microsoft OS descriptor.
-	let mut msos_descriptor = [0; 256];
-	let mut control_buf = [0; 64];
-	let mut request_handler = MyRequestHandler {};
-	let mut device_handler = MyDeviceHandler::new();
-
+pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
 	let mut state = State::new();
 	let mut web_state = WebUsbState::new();
+	make_static!((State, WebUsbState), (state, web_state))
+}
 
-	let web_usb_config = WebUsbConfig {
-		max_packet_size: 64,
-		landing_url: None,
-		vendor_code: 1,
-	};
+pub async fn setup_usb(usb: USB, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>) {
+	let (state, web_state) = get_states();
 
+	let device_handler = DeviceHandler::new();
+	let mut request_handler = MyRequestHandler {};
 
-	let mut builder = Builder::new(
-		driver,
-		config,
-		&mut config_descriptor,
-		&mut bos_descriptor,
-		&mut msos_descriptor,
-		&mut control_buf,
-	);
+	let mut builder = get_builder(usb);
+	builder.handler(device_handler);
 
-	builder.handler(&mut device_handler);
+	let (config, web_usb_config) = get_device_configs();
 
-	// Create classes on the builder.
-	let config = embassy_usb::class::hid::Config {
-		report_descriptor: KeyboardReport::desc(),
-		request_handler: None,
-		poll_ms: 60,
-		max_packet_size: 64,
-	};
-
-	let hid = HidReaderWriter::<_, 1, 8>::new(&mut builder, &mut state, config);
-	WebUsb::configure(&mut builder, &mut web_state, &web_usb_config);
+	let hid = HidReaderWriter::<_, 1, 8>::new(&mut builder, state, config);
+	WebUsb::configure(&mut builder, web_state, &web_usb_config);
 
 	let mut endpoints = WebEndpoints::new(&mut builder, &web_usb_config);
 
@@ -158,48 +126,6 @@ impl RequestHandler for MyRequestHandler {
 	fn get_idle_ms(&mut self, id: Option<ReportId>) -> Option<u32> {
 		info!("Get idle rate for {:?}", id);
 		None
-	}
-}
-
-struct MyDeviceHandler {
-	configured: AtomicBool,
-}
-
-impl MyDeviceHandler {
-	fn new() -> Self {
-		MyDeviceHandler {
-			configured: AtomicBool::new(false),
-		}
-	}
-}
-
-impl Handler for MyDeviceHandler {
-	fn enabled(&mut self, enabled: bool) {
-		self.configured.store(false, Ordering::Relaxed);
-		if enabled {
-			info!("Device enabled");
-		} else {
-			info!("Device disabled");
-		}
-	}
-
-	fn reset(&mut self) {
-		self.configured.store(false, Ordering::Relaxed);
-		info!("Bus reset, the Vbus current limit is 100mA");
-	}
-
-	fn addressed(&mut self, addr: u8) {
-		self.configured.store(false, Ordering::Relaxed);
-		info!("USB address set to: {}", addr);
-	}
-
-	fn configured(&mut self, configured: bool) {
-		self.configured.store(configured, Ordering::Relaxed);
-		if configured {
-			info!("Device configured, it may now draw up to the configured current limit from Vbus.")
-		} else {
-			info!("Device is no longer configured, the Vbus current limit is 100mA.");
-		}
 	}
 }
 

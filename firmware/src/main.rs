@@ -3,7 +3,7 @@
 
 mod usb;
 mod hid;
-
+mod util;
 
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
