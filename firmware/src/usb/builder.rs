@@ -1,11 +1,9 @@
-use core::cell::RefCell;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::Driver;
 use embassy_usb::Builder;
-use embassy_usb::class::hid::State;
 use crate::make_static;
 use crate::usb::config::get_usb_config;
-use crate::usb::{Irqs, MyRequestHandler};
+use crate::usb::{Irqs};
 use crate::usb::UsbDriver;
 
 struct Buffers {

@@ -3,28 +3,25 @@ mod builder;
 mod web_usb;
 mod device_handler;
 
-use core::sync::atomic::{AtomicBool, Ordering};
-
 use defmt::*;
 use embassy_futures::join::{join, join3};
 use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::USB;
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
-use embassy_usb::{Builder, Config, Handler};
+use embassy_usb::{Builder};
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, WebUsb};
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
+use usbd_hid::descriptor::{KeyboardReport};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
-use embassy_sync::pubsub::{Publisher, PubSubChannel, Subscriber, WaitResult};
+use embassy_sync::pubsub::{PubSubChannel, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
-use shared::{PRODUCT_ID, VENDOR_ID};
 use shared::message::{ Message};
 use crate::make_static;
 use crate::usb::builder::get_builder;
-use crate::usb::config::{get_device_configs, get_usb_config};
+use crate::usb::config::{get_device_configs};
 use crate::usb::device_handler::DeviceHandler;
 use crate::usb::web_usb::{UsbChannel, UsbPublisher, UsbSubscriber};
 
@@ -33,8 +30,8 @@ bind_interrupts!(struct Irqs {
 });
 
 pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
-	let mut state = State::new();
-	let mut web_state = WebUsbState::new();
+	let state = State::new();
+	let web_state = WebUsbState::new();
 	make_static!((State, WebUsbState), (state, web_state))
 }
 
