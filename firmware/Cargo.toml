@@ -19,4 +19,5 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 usbd-hid = "0.7"
 
 shared = { path = "../shared"}
-log = "0.4.22"
+static_cell = "2.1.0"
+portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
