@@ -16,7 +16,7 @@ struct Buffers {
 pub fn get_builder(usb: USB_OTG_FS, pa12: PA12, pa11: PA11) -> Builder<'static, Driver<'static, USB_OTG_FS>>{
 	// Create the driver, from the HAL.
 
-	let mut ep_out_buffer = make_static!([u8; 256], [0u8; 256]);
+	let ep_out_buffer = make_static!([u8; 256], [0u8; 256]);
 	let mut config = embassy_stm32::usb_otg::Config::default();
 	config.vbus_detection = false;
 	let driver = Driver::new_fs(usb, Irqs, pa12, pa11, ep_out_buffer, config);

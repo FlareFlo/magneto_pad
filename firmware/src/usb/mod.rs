@@ -18,7 +18,7 @@ use embassy_sync::pubsub::{PubSubChannel, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 use shared::message::{ Message};
-use crate::{make_static, usb};
+use crate::{make_static};
 use crate::usb::builder::get_builder;
 use crate::usb::config::{get_device_configs};
 use crate::usb::device_handler::DeviceHandler;

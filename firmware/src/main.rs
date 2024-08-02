@@ -7,7 +7,7 @@ mod util;
 
 use core::default::Default;
 use embassy_executor::Spawner;
-use embassy_futures::join::{join, join3};
+use embassy_futures::join::{join3};
 use embassy_stm32::Config;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::time::Hertz;
@@ -43,7 +43,7 @@ async fn main(_spawner: Spawner) {
         config.rcc.sys = Sysclk::PLL1_P;
     }
 
-    let mut p = embassy_stm32::init(config);
+    let p = embassy_stm32::init(config);
 
     let channel: Channel<NoopRawMutex, KeyboardReport, 10> = Channel::new();
     let hid = run_hid(p.PA0, p.EXTI0, channel.sender());

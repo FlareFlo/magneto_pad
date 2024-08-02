@@ -1,6 +1,6 @@
 use defmt::info;
 use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::gpio::{Input, Pin, Pull};
+use embassy_stm32::gpio::{Input, Pull};
 use embassy_stm32::peripherals::{EXTI0, PA0};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Sender;
