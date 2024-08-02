@@ -5,28 +5,27 @@ mod device_handler;
 
 use defmt::*;
 use embassy_futures::join::{join, join3};
-use embassy_rp::bind_interrupts;
-use embassy_rp::peripherals::USB;
+use embassy_stm32::{bind_interrupts, peripherals, usb_otg};
+use embassy_stm32::peripherals::{PA11, PA12, USB_OTG_FS};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder};
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, WebUsb};
 use usbd_hid::descriptor::{KeyboardReport};
-use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::pubsub::{PubSubChannel, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
 use {defmt_rtt as _, panic_probe as _};
 use shared::message::{ Message};
-use crate::make_static;
+use crate::{make_static, usb};
 use crate::usb::builder::get_builder;
 use crate::usb::config::{get_device_configs};
 use crate::usb::device_handler::DeviceHandler;
 use crate::usb::web_usb::{UsbChannel, UsbPublisher, UsbSubscriber};
 
 bind_interrupts!(struct Irqs {
-    USBCTRL_IRQ => InterruptHandler<USB>;
+    OTG_FS => usb_otg::InterruptHandler<peripherals::USB_OTG_FS>;
 });
 
 pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
@@ -35,13 +34,13 @@ pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
 	make_static!((State, WebUsbState), (state, web_state))
 }
 
-pub async fn setup_usb(usb: USB, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>) {
+pub async fn setup_usb(usb: USB_OTG_FS, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>, pa12: PA12, pa11: PA11) {
 	let (state, web_state) = get_states();
 
 	let device_handler = DeviceHandler::new();
 	let mut request_handler = MyRequestHandler {};
 
-	let mut builder = get_builder(usb);
+	let mut builder = get_builder(usb, pa12, pa11);
 	builder.handler(device_handler);
 
 	let (config, web_usb_config) = get_device_configs();
