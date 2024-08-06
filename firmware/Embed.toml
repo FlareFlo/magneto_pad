@@ -1,16 +1,9 @@
-[default.probe]
-protocol = "Swd"
-speed = 20000
-
 [default.general]
-chip = "RP2040"
-log_level = "WARN"
-# RP2040 does not support connect_under_reset
-connect_under_reset = false
+chip = "STM32F411CEUx"
 
-[default.flashing]
-enabled = true
+[default.probe]
+#speed = 1800
 
-[default.reset]
+
+[default.rtt]
 enabled = true
-halt_afterwards = false
