@@ -6,15 +6,18 @@ mod hid;
 mod util;
 
 use core::default::Default;
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join3};
+use embassy_stm32::adc::Adc;
 use embassy_stm32::Config;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::time::Hertz;
 use usbd_hid::descriptor::KeyboardReport;
+use embassy_futures::join::join4;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::Timer;
+use embassy_time::{Delay, Timer};
 use {defmt_rtt as _, panic_probe as _};
 use crate::hid::run_hid;
 use crate::usb::setup_usb;
@@ -49,6 +52,35 @@ async fn main(_spawner: Spawner) {
     let hid = run_hid(p.PA0, p.EXTI0, channel.sender());
     let usb = setup_usb(p.USB_OTG_FS, channel.receiver(), p.PA12, p.PA11);
 
+    let mut delay = Delay;
+    let mut adc = Adc::new(p.ADC1, &mut delay);
+    let mut pin = p.PA4;
+    let ana = async {
+        let mut max = u16::MIN;
+        let mut min = u16::MAX;
+        loop {
+            let curr = adc.read(&mut pin);
+
+            if curr > max {
+                max = curr;
+            }
+
+            if curr < min {
+                min = curr;
+            }
+
+            let percentage = if max != min {
+                ((curr - min) as f32 / (max - min) as f32) * 100.0
+            } else {
+                0.0
+            };
+
+            // info!("{}", Repeater(percentage as u8));
+            info!("{} {}", min, max);
+            Timer::after_millis(100).await;
+        }
+    };
+
     let mut led = Output::new(p.PC13, Level::Low, Speed::Medium);
     let blinky = async {
         loop {
@@ -57,5 +89,18 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    join3(hid, usb, blinky).await;
+    join4(hid, usb, blinky, ana).await;
+}
+
+pub struct Repeater(u8);
+
+impl defmt::Format for Repeater {
+    fn format(&self, f: defmt::Formatter) {
+        for _ in 0..self.0 {
+            defmt::write!(
+                f,
+                "#",
+            )
+        }
+    }
 }
