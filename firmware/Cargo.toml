@@ -6,8 +6,8 @@ license = "MIT OR Apache-2.0"
 
 
 [dependencies]
-embassy-executor = { version = "0.5.0", features = ["task-arena-size-98304", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
-embassy-usb = { version = "0.2.0", features = ["defmt"] }
+embassy-executor = { version = "0.6.0", features = ["task-arena-size-98304", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
+embassy-usb = { version = "0.3.0", features = ["defmt"] }
 embassy-stm32 = { version = "0.1.0", features = ["defmt", "stm32f411ce", "unstable-pac", "time-driver-any", "exti", "chrono"] }
 embassy-futures = { version = "0.1.0"}
 embassy-sync = "0.6.0"
@@ -17,7 +17,7 @@ defmt-rtt = "0.4"
 cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-usbd-hid = "0.7"
+usbd-hid = {version = "0.8.2", features = ["defmt"]}
 
 shared = { path = "../shared"}
 static_cell = "2.1.0"
