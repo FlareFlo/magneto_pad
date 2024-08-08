@@ -1,12 +1,12 @@
 use defmt::info;
-use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::gpio::{Input, Pull};
-use embassy_stm32::peripherals::{EXTI0, PA0};
+use embassy_stm32::exti::{AnyChannel, ExtiInput};
+use embassy_stm32::gpio::{AnyPin, Input, Pull};
+use embassy_stm32::peripherals::{EXTI0};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Sender;
 use usbd_hid::descriptor::KeyboardReport;
 
-pub async fn run_hid(pin: PA0, exti: EXTI0, channel: Sender<'_, NoopRawMutex, KeyboardReport, 10>) {
+pub async fn run_hid(pin: AnyPin, exti: AnyChannel, channel: Sender<'_, NoopRawMutex, KeyboardReport, 10>) {
 	// Set up the signal pin that will be used to trigger the keyboard.
 	let mut signal_pin = ExtiInput::new(Input::new(pin, Pull::Down), exti);
 
