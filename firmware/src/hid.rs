@@ -3,8 +3,10 @@ use embassy_stm32::exti::{AnyChannel, ExtiInput};
 use embassy_stm32::gpio::{AnyPin, Input, Pull};
 use embassy_stm32::peripherals::{EXTI0};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Sender;
+use embassy_sync::channel::{Channel, Sender};
 use usbd_hid::descriptor::KeyboardReport;
+
+pub type HidChannel = Channel<NoopRawMutex, KeyboardReport, 10>;
 
 pub async fn run_hid(pin: AnyPin, exti: AnyChannel, channel: Sender<'_, NoopRawMutex, KeyboardReport, 10>) {
 	// Set up the signal pin that will be used to trigger the keyboard.
