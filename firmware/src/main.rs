@@ -4,13 +4,16 @@
 mod usb;
 mod hid;
 mod util;
+mod constants;
 
 use core::default::Default;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join3};
 use embassy_stm32::adc::Adc;
-use embassy_stm32::Config;
+use embassy_stm32::{bind_interrupts, flash, Config};
+use embassy_stm32::flash::{Flash, InterruptHandler as FInterruptHandler};
+use embassy_stm32::flash::Bank1Region3;
 use embassy_stm32::gpio::{Level, Output, Pin, Speed};
 use embassy_stm32::time::Hertz;
 use embassy_futures::join::join4;
@@ -19,8 +22,13 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Delay, Timer};
 use {defmt_rtt as _, panic_probe as _};
+use crate::constants::FLASH_OFFSET;
 use crate::hid::{HidChannel, run_hid};
 use crate::usb::setup_usb;
+
+bind_interrupts!(struct Irqs {
+    FLASH => FInterruptHandler;
+});
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -52,6 +60,11 @@ async fn main(_spawner: Spawner) {
     let hid = run_hid(p.PA0.degrade(), p.EXTI0.degrade(), channel.sender());
     let usb = setup_usb(p.USB_OTG_FS, channel.receiver(), p.PA12, p.PA11);
 
+    let flash = Flash::new(p.FLASH, Irqs);
+    let regions = flash.into_regions();
+    let mut user_flash: Bank1Region3 = regions.bank1_region3;
+    // info!("{:?}", flash);
+
     let mut delay = Delay;
     let mut adc = Adc::new(p.ADC1, &mut delay);
     let mut pin = p.PA4;
@@ -76,16 +89,21 @@ async fn main(_spawner: Spawner) {
             };
 
             // info!("{}", Repeater(percentage as u8));
-            info!("{} {}", min, max);
+            // info!("{} {}", min, max);
             Timer::after_millis(100).await;
         }
     };
 
     let mut led = Output::new(p.PC13, Level::Low, Speed::Medium);
     let blinky = async {
+        let mut data: [u8; 128 / 8] = [0;  128 / 8];
+        user_flash.read(FLASH_OFFSET, &mut data).await.unwrap();
         loop {
+            data[0] += 1;
             led.toggle();
             Timer::after_secs(1).await;
+            user_flash.write(FLASH_OFFSET, &data).await.unwrap();
+            info!("{}", data[0]);
         }
     };
 
