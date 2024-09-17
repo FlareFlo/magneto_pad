@@ -1,30 +1,29 @@
 #![no_std]
 #![no_main]
 
-mod usb;
-mod hid;
-mod util;
-mod constants;
-
 use core::default::Default;
+
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::{join3};
-use embassy_stm32::adc::Adc;
-use embassy_stm32::{bind_interrupts, flash, Config};
+use embassy_futures::join::join3;
+use embassy_stm32::{bind_interrupts, Config, Peripheral};
+use embassy_stm32::adc::{Adc, AdcChannel, AnyAdcChannel};
+use embassy_stm32::exti::Channel as AnyChannel;
 use embassy_stm32::flash::{Flash, InterruptHandler as FInterruptHandler};
 use embassy_stm32::flash::Bank1Region3;
-use embassy_stm32::gpio::{Level, Output, Pin, Speed};
+use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
+use embassy_stm32::peripherals::ADC1;
 use embassy_stm32::time::Hertz;
-use embassy_futures::join::join4;
-use embassy_stm32::exti::Channel as AnyChannel;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Delay, Timer};
-use {defmt_rtt as _, panic_probe as _};
-use crate::constants::FLASH_OFFSET;
+
 use crate::hid::{HidChannel, run_hid};
 use crate::usb::setup_usb;
+
+mod usb;
+// mod hid;
+mod util;
+mod constants;
+mod hid;
 
 bind_interrupts!(struct Irqs {
     FLASH => FInterruptHandler;
@@ -63,62 +62,143 @@ async fn main(_spawner: Spawner) {
     let flash = Flash::new(p.FLASH, Irqs);
     let regions = flash.into_regions();
     let mut user_flash: Bank1Region3 = regions.bank1_region3;
-    // info!("{:?}", flash);
 
-    let mut delay = Delay;
-    let mut adc = Adc::new(p.ADC1, &mut delay);
-    let mut pin = p.PA4;
-    let ana = async {
-        let mut max = u16::MIN;
-        let mut min = u16::MAX;
+    let mut reader = AnalogueReader::new(
+        p.PA5.degrade(),
+        p.PA4.degrade(),
+        p.PA3.degrade(),
+        p.PA2.degrade(),
+        p.PA1.degrade(),
+        [p.PA6.degrade_adc()],
+        Adc::new(p.ADC1),
+    );
+
+    let scanner = async {
+        let mut keys = [KeyState {
+            min: 0,
+            max: 0,
+            pressed: false,
+            config: KeyConfig::Threshold(1500),
+        }; 4];
+
         loop {
-            let curr = adc.read(&mut pin);
-
-            if curr > max {
-                max = curr;
+            for i in 0..4 {
+                keys[i].update(reader.sample(i));
             }
 
-            if curr < min {
-                min = curr;
-            }
-
-            let percentage = if max != min {
-                ((curr - min) as f32 / (max - min) as f32) * 100.0
-            } else {
-                0.0
-            };
-
-            // info!("{}", Repeater(percentage as u8));
-            // info!("{} {}", min, max);
-            Timer::after_millis(100).await;
+            info!("k1: {}, k2: {}, k3: {}, k4: {}", keys[0].pressed, keys[1].pressed, keys[2].pressed, keys[3].pressed);
         }
     };
 
-    let mut led = Output::new(p.PC13, Level::Low, Speed::Medium);
-    let blinky = async {
-        let mut data: [u8; 128 / 8] = [0;  128 / 8];
-        user_flash.read(FLASH_OFFSET, &mut data).await.unwrap();
-        loop {
-            data[0] += 1;
-            led.toggle();
-            Timer::after_secs(1).await;
-            user_flash.write(FLASH_OFFSET, &data).await.unwrap();
-            info!("{}", data[0]);
-        }
-    };
-
-    join4(hid, usb, blinky, ana).await;
+    join3(hid, usb, scanner).await;
 }
 
-pub struct Repeater(u8);
+struct AnalogueReader<const AMOUNT: usize = 1> {
+    channels: [AnyAdcChannel<ADC1>; AMOUNT],
+    adc: Adc<'static, ADC1>,
+    s0: Output<'static>,
+    s1: Output<'static>,
+    s2: Output<'static>,
+    s3: Output<'static>,
+    en: Output<'static>,
+}
 
-impl defmt::Format for Repeater {
-    fn format(&self, f: defmt::Formatter) {
-        for _ in 0..self.0 {
-            defmt::write!(
-                f,
-                "#",
-            )
+impl<const AMOUNT: usize> AnalogueReader<AMOUNT> {
+    fn new(
+        s0: AnyPin,
+        s1: AnyPin,
+        s2: AnyPin,
+        s3: AnyPin,
+        en: AnyPin,
+        mut multiplexers: [AnyAdcChannel<ADC1>; AMOUNT],
+        adc: Adc<'static, ADC1>
+    ) -> Self {
+        // low speed 8MHz
+        // medium speed 50MHz
+        // maximum high-speed 100MHz
+        // very high-speed 180Mhz.
+
+        Self {
+            channels: multiplexers,
+            adc,
+            s0: Output::new(s0, Level::Low, Speed::Low),
+            s1: Output::new(s1, Level::Low, Speed::Low),
+            s2: Output::new(s2, Level::Low, Speed::Low),
+            s3: Output::new(s3, Level::Low, Speed::Low),
+            en: Output::new(en, Level::Low, Speed::Low),
+        }
+    }
+
+    fn sample(&mut self, channel: usize) -> u16 {
+        self.s0.set_level(Level::from(channel & 1 == 1));
+        self.s1.set_level(Level::from((channel >> 1) & 1 == 1));
+        self.s2.set_level(Level::from((channel >> 2) & 1 == 1));
+        self.s3.set_level(Level::from((channel >> 3) & 1 == 1));
+
+        self.adc.blocking_read(&mut self.channels[channel / 16])
+    }
+}
+
+#[derive(Copy, Clone)]
+enum  KeyConfig {
+    // distance 0 - 400 (think about bigger range)
+    Threshold(u16),
+    RappidTrigger(u16),
+}
+
+// TODO convert to distance
+#[derive(Copy, Clone)]
+struct KeyState {
+    min: u16,
+    max: u16,
+    pressed: bool,
+    config: KeyConfig,
+}
+
+impl KeyState {
+    fn update(&mut self, value: u16) {
+        if value > self.max {
+            self.max = value;
+        }
+
+        if value < self.min {
+            self.min = value;
+        }
+
+        match self.config {
+            KeyConfig::Threshold(v) => self.pressed = value > v,
+            KeyConfig::RappidTrigger(_) => todo!(),
         }
     }
 }
+
+// #[embassy_executor::task]
+// async fn switch_scan(mut reader: AnalogueReader) {
+//     let mut keys = [KeyState {
+//         min: 0,
+//         max: 0,
+//         pressed: false,
+//         config: KeyConfig::Threshold(1500),
+//     }; 4];
+//
+//     loop {
+//         for i in 0..4 {
+//             keys[i].update(reader.sample(i));
+//         }
+//
+//
+//     }
+// }
+
+// pub struct Repeater(u8);
+//
+// impl defmt::Format for Repeater {
+//     fn format(&self, f: defmt::Formatter) {
+//         for _ in 0..self.0 {
+//             defmt::write!(
+//                 f,
+//                 "#",
+//             )
+//         }
+//     }
+// }

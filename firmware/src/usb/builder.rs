@@ -1,5 +1,5 @@
 use embassy_stm32::peripherals::{PA11, PA12, USB_OTG_FS};
-use embassy_stm32::usb_otg::Driver;
+use embassy_stm32::usb::Driver;
 use embassy_usb::Builder;
 use crate::{make_static};
 use crate::usb::config::get_usb_config;
@@ -17,7 +17,7 @@ pub fn get_builder(usb: USB_OTG_FS, pa12: PA12, pa11: PA11) -> Builder<'static, 
 	// Create the driver, from the HAL.
 
 	let ep_out_buffer = make_static!([u8; 256], [0u8; 256]);
-	let mut config = embassy_stm32::usb_otg::Config::default();
+	let mut config = embassy_stm32::usb::Config::default();
 	config.vbus_detection = false;
 	let driver = Driver::new_fs(usb, Irqs, pa12, pa11, ep_out_buffer, config);
 

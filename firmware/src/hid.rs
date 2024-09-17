@@ -10,7 +10,7 @@ pub type HidChannel = Channel<NoopRawMutex, KeyboardReport, 10>;
 
 pub async fn run_hid(pin: AnyPin, exti: AnyChannel, channel: Sender<'_, NoopRawMutex, KeyboardReport, 10>) {
 	// Set up the signal pin that will be used to trigger the keyboard.
-	let mut signal_pin = ExtiInput::new(Input::new(pin, Pull::Down), exti);
+	let mut signal_pin = ExtiInput::new(pin, exti,Pull::Down);
 
 	loop {
 		info!("Waiting for HIGH on pin 16");

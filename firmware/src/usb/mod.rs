@@ -5,7 +5,7 @@ mod device_handler;
 
 use defmt::*;
 use embassy_futures::join::{join, join3};
-use embassy_stm32::{bind_interrupts, peripherals, usb_otg};
+use embassy_stm32::{bind_interrupts, peripherals, usb};
 use embassy_stm32::peripherals::{PA11, PA12, USB_OTG_FS};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
@@ -25,7 +25,7 @@ use crate::usb::device_handler::DeviceHandler;
 use crate::usb::web_usb::{UsbChannel, UsbPublisher, UsbSubscriber};
 
 bind_interrupts!(struct Irqs {
-    OTG_FS => usb_otg::InterruptHandler<peripherals::USB_OTG_FS>;
+    OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
 });
 
 pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
