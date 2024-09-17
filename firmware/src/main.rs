@@ -15,7 +15,7 @@ use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
 use embassy_stm32::peripherals::ADC1;
 use embassy_stm32::time::Hertz;
 use embassy_sync::channel::Channel;
-
+use embassy_time::Timer;
 use crate::hid::{HidChannel, run_hid};
 use crate::usb::setup_usb;
 
@@ -75,18 +75,25 @@ async fn main(_spawner: Spawner) {
 
     let scanner = async {
         let mut keys = [KeyState {
-            min: 0,
-            max: 0,
+            min: u16::MAX,
+            max: u16::MIN,
             pressed: false,
             config: KeyConfig::Threshold(1500),
         }; 4];
 
+        let mut a = [0; 4];
+
         loop {
             for i in 0..4 {
-                keys[i].update(reader.sample(i));
+                a[i] = reader.sample(i);
+                keys[i].update(a[i]);
             }
 
-            info!("k1: {}, k2: {}, k3: {}, k4: {}", keys[0].pressed, keys[1].pressed, keys[2].pressed, keys[3].pressed);
+            info!("{:?} ({:?}, {:?})", keys[0].pressed_percent(a[0]), keys[0].min, keys[0].max);
+
+            // info!("k1: {:?}, k2: {:?}, k3: {:?}, k4: {:?}", keys[0].pressed_percent(a[0]), keys[1].pressed_percent(a[1]), keys[2].pressed_percent(a[2]), keys[3].pressed_percent(a[3]));
+
+            Timer::after_millis(1).await;
         }
     };
 
@@ -149,8 +156,8 @@ enum  KeyConfig {
 // TODO convert to distance
 #[derive(Copy, Clone)]
 struct KeyState {
-    min: u16,
-    max: u16,
+    pub min: u16,
+    pub max: u16,
     pressed: bool,
     config: KeyConfig,
 }
@@ -169,6 +176,15 @@ impl KeyState {
             KeyConfig::Threshold(v) => self.pressed = value > v,
             KeyConfig::RappidTrigger(_) => todo!(),
         }
+    }
+
+    // TODO adjust this (does not work correctly)
+    fn pressed_percent(&self, value: u16) -> f64 {
+        let a = 1.0 / libm::cbrt(value as f64);
+        let b = 1.0 / libm::cbrt(self.max as f64);
+        let c = 1.0 / libm::cbrt(self.min as f64);
+
+        (a - b) / (c - b)
     }
 }
 
