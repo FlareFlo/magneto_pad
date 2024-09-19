@@ -5,7 +5,7 @@ use core::default::Default;
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join3;
+use embassy_futures::join::{join, join3};
 use embassy_stm32::{bind_interrupts, Config, Peripheral};
 use embassy_stm32::adc::{Adc, AdcChannel, AnyAdcChannel};
 use embassy_stm32::exti::Channel as AnyChannel;
@@ -14,8 +14,13 @@ use embassy_stm32::flash::Bank1Region3;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
 use embassy_stm32::peripherals::ADC1;
 use embassy_stm32::time::Hertz;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::Timer;
+use keyberon::action::Action;
+use keyberon::key_code::{KbHidReport, KeyCode};
+use keyberon::layout::{Event, Layout};
+use usbd_hid::descriptor::KeyboardReport;
 use crate::hid::{HidChannel, run_hid};
 use crate::usb::setup_usb;
 
@@ -55,8 +60,10 @@ async fn main(_spawner: Spawner) {
 
     let p = embassy_stm32::init(config);
 
-    let channel: HidChannel = Channel::new();
-    let hid = run_hid(p.PA0.degrade(), p.EXTI0.degrade(), channel.sender());
+    let channel: Channel<NoopRawMutex, KbHidReport, 10> = Channel::new();
+    // let channel: HidChannel = Channel::new();
+    let sender = channel.sender();
+    // let hid = run_hid(p.PA0.degrade(), p.EXTI0.degrade(), channel.sender());
     let usb = setup_usb(p.USB_OTG_FS, channel.receiver(), p.PA12, p.PA11);
 
     let flash = Flash::new(p.FLASH, Irqs);
@@ -74,6 +81,17 @@ async fn main(_spawner: Spawner) {
     );
 
     let scanner = async {
+        let mut layout = Layout::new(&[
+            &[
+                &[
+                    Action::KeyCode(KeyCode::A),
+                    Action::KeyCode(KeyCode::S),
+                    Action::KeyCode(KeyCode::D),
+                    Action::KeyCode(KeyCode::W),
+                ]
+            ]
+        ]);
+
         let mut keys = [KeyState {
             min: u16::MAX,
             max: u16::MIN,
@@ -82,22 +100,34 @@ async fn main(_spawner: Spawner) {
         }; 4];
 
         let mut a = [0; 4];
+        let mut r = [false; 4];
 
         loop {
             for i in 0..4 {
                 a[i] = reader.sample(i);
                 keys[i].update(a[i]);
+
+                let _ = layout.event(if keys[i].pressed {
+                    Event::Press(0, i as u8)
+                } else {
+                    Event::Release(0, i as u8)
+                });
             }
 
-            info!("{:?} ({:?}, {:?})", keys[0].pressed_percent(a[0]), keys[0].min, keys[0].max);
+            let report: KbHidReport = layout.tick().collect();
 
-            // info!("k1: {:?}, k2: {:?}, k3: {:?}, k4: {:?}", keys[0].pressed_percent(a[0]), keys[1].pressed_percent(a[1]), keys[2].pressed_percent(a[2]), keys[3].pressed_percent(a[3]));
+            sender.send(report).await;
 
-            Timer::after_millis(1).await;
+            // info!("k1: {:?}, k2: {:?}, k3: {:?}, k4: {:?}", keys[0].pressed, keys[1].pressed, keys[2].pressed, keys[3].pressed);
+
+            Timer::after_micros(10).await;
+            // Timer::after_millis(1).await;
         }
     };
 
-    join3(hid, usb, scanner).await;
+    // usb.await;
+
+    join(usb, scanner).await;
 }
 
 struct AnalogueReader<const AMOUNT: usize = 1> {
@@ -173,19 +203,19 @@ impl KeyState {
         }
 
         match self.config {
-            KeyConfig::Threshold(v) => self.pressed = value > v,
+            KeyConfig::Threshold(v) => self.pressed = value < v,
             KeyConfig::RappidTrigger(_) => todo!(),
         }
     }
 
     // TODO adjust this (does not work correctly)
-    fn pressed_percent(&self, value: u16) -> f64 {
-        let a = 1.0 / libm::cbrt(value as f64);
-        let b = 1.0 / libm::cbrt(self.max as f64);
-        let c = 1.0 / libm::cbrt(self.min as f64);
-
-        (a - b) / (c - b)
-    }
+    // fn pressed_percent(&self, value: u16) -> f64 {
+    //     let a = 1.0 / libm::cbrt(value as f64);
+    //     let b = 1.0 / libm::cbrt(self.max as f64);
+    //     let c = 1.0 / libm::cbrt(self.min as f64);
+    //
+    //     (a - b) / (c - b)
+    // }
 }
 
 // #[embassy_executor::task]

@@ -16,6 +16,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::pubsub::{PubSubChannel, WaitResult};
 use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
+use keyberon::key_code::KbHidReport;
 use {defmt_rtt as _, panic_probe as _};
 use shared::message::{ Message};
 use crate::{make_static};
@@ -34,7 +35,7 @@ pub fn get_states() -> &'static mut (State<'static>, WebUsbState<'static>) {
 	make_static!((State, WebUsbState), (state, web_state))
 }
 
-pub async fn setup_usb(usb: USB_OTG_FS, receiver: Receiver<'_, NoopRawMutex, KeyboardReport, 10>, pa12: PA12, pa11: PA11) {
+pub async fn setup_usb(usb: USB_OTG_FS, receiver: Receiver<'_, NoopRawMutex, KbHidReport, 10>, pa12: PA12, pa11: PA11) {
 	let (state, web_state) = get_states();
 
 	let device_handler = DeviceHandler::new();
@@ -59,9 +60,14 @@ pub async fn setup_usb(usb: USB_OTG_FS, receiver: Receiver<'_, NoopRawMutex, Key
 	let (reader, mut writer) = hid.split();
 
 	let hid_writer_fut = async {
+		info!("wait ready");
+		writer.ready().await;
+		info!("ready");
+
 		loop {
 			let msg = receiver.receive().await;
-			writer.write_serialize(&msg).await.unwrap();
+			writer.write(msg.as_bytes()).await.unwrap();
+			// writer.write_serialize(&msg).await.unwrap();
 		}
 	};
 
